@@ -1,50 +1,48 @@
 ﻿# Finger Pinch Symphony — 双指捏合音游
 
-## 玩法说明
-
 基于 **MediaPipe 双手手势识别** 的节奏音乐游戏。通过 **不同手指与拇指对捏** 来触发不同音阶，配合下落的音符节奏完成演奏。
 
-### 界面布局
+## 本地运行
 
-- **左侧面板**：摄像头实时画面 + 双手检测状态 + 指法对照表（含实时捏合强度指示条）
-- **右侧区域**：8列音轨游戏画布，音符从上往下滚动
+```bash
+python serve.py
+# 浏览器打开 http://127.0.0.1:8765
+```
 
-### 指法对照表
+`serve.py` 会自动设置 COEP/COOP 头并代理 MediaPipe 模型文件。
 
-| 手 | 手指组合 | 音名 | 频率 |
-|----|---------|------|------|
-| 左手 | 拇指+食指 | C4 (Do) | 262Hz |
-| 左手 | 拇指+中指 | D4 (Re) | 294Hz |
-| 左手 | 拇指+无名指 | E4 (Mi) | 330Hz |
-| 左手 | 拇指+小指 | F4 (Fa) | 349Hz |
-| 右手 | 拇指+食指 | G4 (Sol) | 392Hz |
-| 右手 | 拇指+中指 | A4 (La) | 440Hz |
-| 右手 | 拇指+无名指 | B4 (Si) | 494Hz |
-| 右手 | 拇指+小指 | C5 (Do↑) | 523Hz |
+## Web 部署
 
-### 游戏规则
+游戏需要 **SharedArrayBuffer**（MediaPipe WASM 依赖），因此托管平台必须设置以下 HTTP 响应头：
 
-1. 将双手放入摄像头画面（左侧面板绿色指示灯亮起即就绪）
-2. 音符从上方按节奏下落到触碰线
-3. 在音符到达触碰线时捏合对应手指
-4. **Perfect**（±60ms）：金色粒子 + 100分
-5. **Good**（±150ms）：绿色粒子 + 50分
-6. **Miss**：连击中断
+```
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Embedder-Policy: require-corp
+```
 
-### 关卡
+### Cloudflare Pages
 
-- 第1关：BPM 110，左右手交替单指
-- 第2关：BPM 140，双手同时捏合
-- 第3关：BPM 175，快速多指复合
+直接上传整个目录，项目已包含 `_headers` 文件，Cloudflare 会自动读取。
 
-## 运行
+### Vercel
 
-双击 `index.html`，浏览器中直接打开。需要摄像头权限。建议 Chrome/Edge。
+```bash
+vercel --prod
+```
 
-## 自定义
+项目已包含 `vercel.json`，自动配置 COEP/COOP 头。
 
-- 音符速度：`game-core.js` 中 `NOTE_SPEED`
-- 判定窗口：`HIT_WINDOW_PERFECT` / `HIT_WINDOW_GOOD`
-- 捏合灵敏度：`PINCH_THRESHOLD`
-- 音阶：`LANES` 数组中的 `freq`
-- 关卡难度：`generateNoteChart()` 中的 BPM 和 pattern
+### 其他静态托管
+
+确保平台支持自定义 HTTP 头。微信内置浏览器可通过扫码直接打开部署后的 URL。
+
+## 技术栈
+
+- MediaPipe Hand Landmarker (tasks-vision)
+- Web Audio API
+- 原生 Canvas 渲染
+- 纯前端，零构建依赖
+
+## 许可
+
+MIT

@@ -121,10 +121,10 @@ bstart.addEventListener("click",async function(){
     camCv.width=320;camCv.height=240;
 
     hintEl.textContent="⏳ ??????...";
-    var tv=await import("/jsd/npm/@mediapipe/tasks-vision@0.10.18/vision_bundle.mjs");
-    var vision=await tv.FilesetResolver.forVisionTasks("/jsd/npm/@mediapipe/tasks-vision@0.10.18/wasm");
+    var tv=await import((location.hostname==="127.0.0.1"||location.hostname==="localhost"?"/jsd":"https://cdn.jsdelivr.net")+"/npm/@mediapipe/tasks-vision@0.10.18/vision_bundle.mjs");
+    var vision=await tv.FilesetResolver.forVisionTasks((location.hostname==="127.0.0.1"||location.hostname==="localhost"?"/jsd":"https://cdn.jsdelivr.net")+"/npm/@mediapipe/tasks-vision@0.10.18/wasm");
     hl=await tv.HandLandmarker.createFromOptions(vision,{
-      baseOptions:{modelAssetPath:"/models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task",delegate:"GPU"},
+      baseOptions:{modelAssetPath:(location.hostname==="127.0.0.1"||location.hostname==="localhost"?"/models":"https://storage.googleapis.com/mediapipe-models")+"/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task",delegate:"GPU"},
       runningMode:"VIDEO",numHands:2
     });
 

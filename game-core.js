@@ -67,6 +67,7 @@
     if (audioCtx) return;
     try {
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === "suspended") audioCtx.resume();
     } catch (e) {
       console.warn('Web Audio not available');
       return;

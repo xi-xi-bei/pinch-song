@@ -1,0 +1,640 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Finger Pinch Symphony</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: #0a0a0f;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      color: #e0e0e0;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    /* ── Split layout: sidebar + game area ── */
+    #app-container {
+      display: flex;
+      width: 100%; height: 100%;
+    }
+
+    /* ── Left Sidebar ── */
+    #sidebar {
+      width: 280px;
+      min-width: 280px;
+      height: 100%;
+      background: #0d0d18;
+      border-right: 1px solid rgba(255,255,255,0.08);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 16px 12px;
+      gap: 12px;
+      z-index: 10;
+      overflow-y: auto;
+    }
+
+    #sidebar .section-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: rgba(255,255,255,0.35);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      width: 100%;
+      text-align: left;
+      padding-left: 4px;
+    }
+
+    /* Camera window */
+    #camera-window {
+      width: 100%;
+      height: 192px;
+      border-radius: 10px;
+      overflow: hidden;
+      background: #000;
+      border: 2px solid rgba(255,255,255,0.1);
+      position: relative;
+    }
+    
+    #camera-window .zone-dot {
+      position: absolute;
+      top: 8px; right: 8px;
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: #FF4466;
+      transition: background 0.3s;
+    }
+    #camera-window .zone-dot.active { background: #00FF88; }
+    #camera-window .zone-label {
+      position: absolute;
+      top: 8px; left: 8px;
+      font-size: 10px;
+      color: rgba(255,255,255,0.5);
+      background: rgba(0,0,0,0.5);
+      padding: 2px 8px;
+      border-radius: 8px;
+    }
+
+    /* Status bar */
+    #hand-status {
+      width: 100%;
+      display: flex;
+      justify-content: space-around;
+      gap: 8px;
+    }
+    .hand-indicator {
+      flex: 1;
+      text-align: center;
+      padding: 6px 4px;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.04);
+      font-size: 11px;
+      color: rgba(255,255,255,0.4);
+      transition: all 0.3s;
+    }
+    .hand-indicator.present {
+      background: rgba(0,255,136,0.1);
+      color: #00FF88;
+    }
+    .hand-indicator .dot {
+      display: inline-block;
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      margin-right: 4px;
+      background: #FF4466;
+    }
+    .hand-indicator.present .dot { background: #00FF88; }
+
+    /* Finger-to-note legend */
+    #legend {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .legend-row {
+      display: flex;
+      align-items: center;
+      padding: 5px 8px;
+      border-radius: 6px;
+      background: rgba(255,255,255,0.03);
+      font-size: 11px;
+      gap: 8px;
+      transition: background 0.2s;
+    }
+    .legend-row.active {
+      background: rgba(255,255,255,0.08);
+    }
+    .legend-swatch {
+      width: 10px; height: 10px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+    .legend-hand {
+      color: rgba(255,255,255,0.4);
+      width: 24px;
+      flex-shrink: 0;
+    }
+    .legend-finger {
+      color: rgba(255,255,255,0.7);
+      width: 42px;
+      flex-shrink: 0;
+    }
+    .legend-note {
+      font-weight: 700;
+      flex-shrink: 0;
+      width: 24px;
+    }
+    .legend-freq {
+      color: rgba(255,255,255,0.35);
+      font-size: 10px;
+      flex-shrink: 0;
+    }
+    .legend-bar {
+      flex: 1;
+      height: 3px;
+      border-radius: 1px;
+      background: rgba(255,255,255,0.06);
+      overflow: hidden;
+    }
+    .legend-bar-fill {
+      height: 100%;
+      border-radius: 1px;
+      transition: width 0.08s;
+    }
+
+    /* ── Game Area ── */
+    #game-area {
+      flex: 1;
+      height: 100%;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Hidden camera for processing */
+    #camera {
+      display: none;
+    }
+
+    #game-canvas {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+    }
+
+    #hand-overlay {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      pointer-events: none;
+      z-index: 30;
+    }
+
+    /* HUD */
+    #hud {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%;
+      padding: 12px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      z-index: 40;
+      pointer-events: none;
+    }
+    .hud-panel {
+      background: rgba(0,0,0,0.5);
+      backdrop-filter: blur(6px);
+      border-radius: 8px;
+      padding: 6px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+    .hud-score { color: #FFD700; }
+    .hud-combo { color: #FF4466; }
+    .hud-level { color: #00BFFF; }
+    .hud-timer { color: #00FF88; }
+
+    /* Gesture hint */
+    #gesture-hint {
+      position: absolute;
+      bottom: 16px; left: 50%;
+      transform: translateX(-50%);
+      padding: 6px 16px;
+      border-radius: 16px;
+      background: rgba(0,0,0,0.45);
+      backdrop-filter: blur(6px);
+      font-size: 12px;
+      color: #888;
+      z-index: 40;
+      pointer-events: none;
+      transition: opacity 0.4s;
+    }
+
+    /* ── Modals (over full viewport) ── */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,0.78);
+      backdrop-filter: blur(8px);
+      z-index: 200;
+    }
+    .modal-overlay.hidden { display: none; }
+    .modal-title {
+      font-size: 40px;
+      font-weight: 800;
+      margin-bottom: 8px;
+      letter-spacing: -0.01em;
+    }
+    .modal-subtitle {
+      font-size: 16px;
+      color: #aaa;
+      margin-bottom: 24px;
+      text-align: center;
+      line-height: 1.5;
+    }
+    .btn {
+      padding: 12px 32px;
+      border: none;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.15s, box-shadow 0.15s;
+      pointer-events: auto;
+    }
+    .btn:hover { transform: scale(1.05); }
+    .btn-primary {
+      background: #00FF88;
+      color: #0a0a0f;
+      box-shadow: 0 0 24px rgba(0,255,136,0.3);
+    }
+
+    /* Sidebar start hint inside start modal */
+    .start-hint {
+      text-align: center;
+      font-size: 13px;
+      color: rgba(255,255,255,0.5);
+      margin-top: 8px;
+      line-height: 1.8;
+    }
+  </style>
+</head>
+<body>
+  <script>document.title="JS-OK";var t=document.getElementById("gesture-hint");if(t){t.textContent="JS????";t.style.color="#0F0";t.style.opacity="1";}</script>
+  <div id="app-container">
+    <!-- ══════════════════════ LEFT SIDEBAR ══════════════════════ -->
+    <div id="sidebar">
+      <div class="section-title">📷 摄像头</div>
+      <div id="camera-window">
+        <video id="camera" playsinline></video>
+        <div class="zone-dot" id="zone-dot"></div>
+        <div class="zone-label">手部画面</div>
+      </div>
+
+      <div id="hand-status">
+        <div class="hand-indicator" id="left-hand-status"><span class="dot"></span>左手</div>
+        <div class="hand-indicator" id="right-hand-status"><span class="dot"></span>右手</div>
+      </div>
+
+      <div class="section-title">🎵 指法对照表</div>
+      <div id="legend">
+        <div class="legend-row" data-lane="0">
+          <span class="legend-swatch" style="background:#FF4466"></span>
+          <span class="legend-hand">左手</span>
+          <span class="legend-finger">拇指+食指</span>
+          <span class="legend-note" style="color:#FF4466">C4</span>
+          <span class="legend-freq">262Hz</span>
+          <span class="legend-bar"><span class="legend-bar-fill" style="background:#FF4466;width:0%" data-lane-fill="0"></span></span>
+        </div>
+        <div class="legend-row" data-lane="1">
+          <span class="legend-swatch" style="background:#FF8822"></span>
+          <span class="legend-hand">左手</span>
+          <span class="legend-finger">拇指+中指</span>
+          <span class="legend-note" style="color:#FF8822">D4</span>
+          <span class="legend-freq">294Hz</span>
+          <span class="legend-bar"><span class="legend-bar-fill" style="background:#FF8822;width:0%" data-lane-fill="1"></span></span>
+        </div>
+        <div class="legend-row" data-lane="2">
+          <span class="legend-swatch" style="background:#FFCC00"></span>
+          <span class="legend-hand">左手</span>
+          <span class="legend-finger">拇指+无名</span>
+          <span class="legend-note" style="color:#FFCC00">E4</span>
+          <span class="legend-freq">330Hz</span>
+          <span class="legend-bar"><span class="legend-bar-fill" style="background:#FFCC00;width:0%" data-lane-fill="2"></span></span>
+        </div>
+        <div class="legend-row" data-lane="3">
+          <span class="legend-swatch" style="background:#88FF00"></span>
+          <span class="legend-hand">左手</span>
+          <span class="legend-finger">拇指+小指</span>
+          <span class="legend-note" style="color:#88FF00">F4</span>
+          <span class="legend-freq">349Hz</span>
+          <span class="legend-bar"><span class="legend-bar-fill" style="background:#88FF00;width:0%" data-lane-fill="3"></span></span>
+        </div>
+        <div class="legend-row" data-lane="4">
+          <span class="legend-swatch" style="background:#00FF88"></span>
+          <span class="legend-hand">右手</span>
+          <span class="legend-finger">拇指+食指</span>
+          <span class="legend-note" style="color:#00FF88">G4</span>
+          <span class="legend-freq">392Hz</span>
+          <span class="legend-bar"><span class="legend-bar-fill" style="background:#00FF88;width:0%" data-lane-fill="4"></span></span>
+        </div>
+        <div class="legend-row" data-lane="5">
+          <span class="legend-swatch" style="background:#00CCFF"></span>
+          <span class="legend-hand">右手</span>
+          <span class="legend-finger">拇指+中指</span>
+          <span class="legend-note" style="color:#00CCFF">A4</span>
+          <span class="legend-freq">440Hz</span>
+          <span class="legend-bar"><span class="legend-bar-fill" style="background:#00CCFF;width:0%" data-lane-fill="5"></span></span>
+        </div>
+        <div class="legend-row" data-lane="6">
+          <span class="legend-swatch" style="background:#4488FF"></span>
+          <span class="legend-hand">右手</span>
+          <span class="legend-finger">拇指+无名</span>
+          <span class="legend-note" style="color:#4488FF">B4</span>
+          <span class="legend-freq">494Hz</span>
+          <span class="legend-bar"><span class="legend-bar-fill" style="background:#4488FF;width:0%" data-lane-fill="6"></span></span>
+        </div>
+        <div class="legend-row" data-lane="7">
+          <span class="legend-swatch" style="background:#AA44FF"></span>
+          <span class="legend-hand">右手</span>
+          <span class="legend-finger">拇指+小指</span>
+          <span class="legend-note" style="color:#AA44FF">C5</span>
+          <span class="legend-freq">523Hz</span>
+          <span class="legend-bar"><span class="legend-bar-fill" style="background:#AA44FF;width:0%" data-lane-fill="7"></span></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════ GAME AREA ══════════════════════ -->
+    <div id="game-area">
+      
+      <canvas id="game-canvas"></canvas>
+      <canvas id="hand-overlay"></canvas>
+
+      <div id="hud">
+        <div class="hud-panel hud-score" id="hud-score">得分: 0</div>
+        <div style="display:flex;gap:8px;">
+          <div class="hud-panel hud-combo" id="hud-combo">🔥 0</div>
+          <div class="hud-panel hud-level" id="hud-level">关卡: 1</div>
+          <div class="hud-panel hud-timer" id="hud-timer">30s</div>
+        </div>
+      </div>
+      <div id="gesture-hint">🖐️ 将双手放入摄像头画面</div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════ MODALS ══════════════════════ -->
+  <!-- Start -->
+  <div class="modal-overlay" id="screen-start">
+    <div class="modal-title">Finger Pinch Symphony</div>
+    <div class="modal-subtitle">双指捏合节奏游戏<br>不同手指与拇指对捏 → 发出不同音阶</div>
+    <button class="btn btn-primary" id="btn-start">开始游戏</button>
+    <div class="start-hint">需要摄像头权限 · 双手同时使用 · 请允许浏览器访问摄像头</div>
+  </div>
+
+  <!-- Game Over -->
+  <div class="modal-overlay hidden" id="screen-gameover">
+    <div class="modal-title" style="color:#FF4466;">游戏结束</div>
+    <div class="modal-subtitle">最终得分: <span id="final-score" style="color:#FFD700;">0</span></div>
+    <button class="btn btn-primary" id="btn-retry">再来一局</button>
+  </div>
+
+  <!-- Level Complete -->
+  <div class="modal-overlay hidden" id="screen-level-complete">
+    <div class="modal-title" style="color:#00FF88;">通关！</div>
+    <div class="modal-subtitle" id="level-complete-msg"></div>
+    <button class="btn btn-primary" id="btn-next">下一关</button>
+  </div>
+
+  <!-- ══════════════════════ SCRIPTS ══════════════════════ -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+  <script src="gesture-base.js"></script>
+  <script src="game-core.js"></script>
+
+  
+  <script>
+    (function () {
+      "use strict";
+
+      var hint = document.getElementById("gesture-hint");
+      hint.textContent = "脚本已加载，点击开始";
+      hint.style.opacity = "1";
+
+      var videoEl = document.getElementById("camera");
+      var overlayCanvas = document.getElementById("hand-overlay");
+      var gameCanvas = document.getElementById("game-canvas");
+      var gameArea = document.getElementById("game-area");
+      var zoneDot = document.getElementById("zone-dot");
+      var gestureHint = hint;
+      var leftHandStatus = document.getElementById("left-hand-status");
+      var rightHandStatus = document.getElementById("right-hand-status");
+      var hudScore = document.getElementById("hud-score");
+      var hudCombo = document.getElementById("hud-combo");
+      var hudLevel = document.getElementById("hud-level");
+      var hudTimer = document.getElementById("hud-timer");
+      var screenStart = document.getElementById("screen-start");
+      var screenGameOver = document.getElementById("screen-gameover");
+      var screenLevelComplete = document.getElementById("screen-level-complete");
+      var btnStart = document.getElementById("btn-start");
+      var btnRetry = document.getElementById("btn-retry");
+      var btnNext = document.getElementById("btn-next");
+      var finalScoreEl = document.getElementById("final-score");
+      var levelCompleteMsg = document.getElementById("level-complete-msg");
+      var legendRows = document.querySelectorAll(".legend-row");
+      var legendFills = document.querySelectorAll("[data-lane-fill]");
+
+      function resize() {
+        var dpr = window.devicePixelRatio || 1;
+        var w = gameArea.clientWidth, h = gameArea.clientHeight;
+        gameCanvas.width = w * dpr; gameCanvas.height = h * dpr;
+        gameCanvas.style.width = w + "px"; gameCanvas.style.height = h + "px";
+        overlayCanvas.width = w * dpr; overlayCanvas.height = h * dpr;
+        overlayCanvas.style.width = w + "px"; overlayCanvas.style.height = h + "px";
+      }
+      window.addEventListener("resize", resize);
+      resize();
+
+      var gesture = new window.GestureBase({ interactionZone:{x:0.05,y:0.05,w:0.9,h:0.9}, debounceDelay:200, tapDebounceDelay:300, showSkeleton:true });
+
+      var cameraCanvas_ = document.getElementById("camera-canvas");
+      var cameraCtx_ = cameraCanvas_ ? cameraCanvas_.getContext("2d") : null;
+
+      gesture.on("frame", function (data) {
+        // Draw camera feed to canvas (mirrored, scaled to container)
+        if (cameraCanvas_ && cameraCtx_ && videoEl.videoWidth > 0) {
+          var container = cameraCanvas_.parentElement;
+          var cw = container ? container.clientWidth : 320;
+          var ch = container ? container.clientHeight : 240;
+          if (cw > 0 && ch > 0 && (cameraCanvas_.width !== cw || cameraCanvas_.height !== ch)) {
+            cameraCanvas_.width = cw;
+            cameraCanvas_.height = ch;
+          }
+          if (cameraCanvas_.width > 0) {
+            cameraCtx_.save();
+            cameraCtx_.clearRect(0, 0, cameraCanvas_.width, cameraCanvas_.height);
+            cameraCtx_.scale(-1, 1);
+            cameraCtx_.drawImage(videoEl, -cameraCanvas_.width, 0, cameraCanvas_.width, cameraCanvas_.height);
+            cameraCtx_.restore();
+          }
+        }
+
+        // Update diagnostic overlay (HTML div, not canvas)
+        var diagDiv = document.getElementById("cam-diag");
+        if (diagDiv) {
+          var detected = gesture.allLandmarks && gesture.allLandmarks.length > 0;
+          diagDiv.innerHTML =
+            "R:" + (gesture._mpResultCount || 0) +
+            " E:" + (gesture._mpErrorCount || 0) +
+            " H:" + (gesture.allLandmarks ? gesture.allLandmarks.length : 0) +
+            " HL:" + (typeof gesture._handLandmarker !== "undefined") +
+            " vT:" + (videoEl && videoEl.currentTime ? videoEl.currentTime.toFixed(1) : "?") +
+            " lvt:" + (gesture._lastVideoTime !== undefined ? (typeof gesture._lastVideoTime === "number" ? gesture._lastVideoTime.toFixed(1) : gesture._lastVideoTime) : "?") +
+            (detected ? " DETECTED!" : " NO_HANDS");
+        }
+
+        // Update MP status display
+        var mpStatusEl = document.getElementById("mp-status");
+        if (mpStatusEl) {
+          var detected3 = gesture.allLandmarks && gesture.allLandmarks.length > 0;
+          mpStatusEl.innerHTML = "MediaPipe: " + (detected3 ? '<span style="color:#00FF88;">??? ' + gesture.allLandmarks.length + ' ??</span>' : '<span style="color:#FF4466;">?????</span>') + " | ??:" + (gesture._mpResultCount || 0) + " ??:" + (gesture._mpErrorCount || 0);
+        }
+
+        zoneDot.className = "zone-dot" + (data.isHandInZone ? " active" : "");
+
+        // Draw hand skeleton on camera canvas (tasks-vision, scaled space)
+        if (cameraCtx_ && cameraCanvas_ && cameraCanvas_.width > 0) {
+          var cw_ = cameraCanvas_.width;
+          var ch_ = cameraCanvas_.height;
+          var allLm = gesture.allLandmarks;
+          if (allLm && allLm.length > 0) {
+            cameraCtx_.save();
+            cameraCtx_.scale(-1, 1);
+            var connections = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[0,17],[17,18],[18,19],[19,20]];
+            for (var hi = 0; hi < allLm.length; hi++) {
+              var lm = allLm[hi];
+              if (!lm) continue;
+              cameraCtx_.strokeStyle = "#00FF88";
+              cameraCtx_.lineWidth = 1;
+              for (var ci = 0; ci < connections.length; ci++) {
+                var a = lm[connections[ci][0]];
+                var b = lm[connections[ci][1]];
+                if (!a || !b) continue;
+                cameraCtx_.beginPath();
+                cameraCtx_.moveTo((a.x-1) * cw_, a.y * ch_);
+                cameraCtx_.lineTo((b.x-1) * cw_, b.y * ch_);
+                cameraCtx_.stroke();
+              }
+              for (var li = 0; li < 21; li++) {
+                var p = lm[li];
+                if (!p) continue;
+                cameraCtx_.beginPath();
+                cameraCtx_.arc((p.x-1) * cw_, p.y * ch_, 2, 0, Math.PI * 2);
+                cameraCtx_.fillStyle = (li === 4 || li === 8 || li === 12 || li === 16 || li === 20) ? "#FF4466" : "rgba(255,255,255,0.7)";
+                cameraCtx_.fill();
+              }
+            }
+            cameraCtx_.restore();
+          }
+        }
+        var leftIdx = -1, rightIdx = -1;
+        for (var h = 0; h < gesture.handCount; h++) {
+          var hd = gesture.getHandHandedness(h);
+          if (hd === "Left") leftIdx = h;
+          if (hd === "Right") rightIdx = h;
+        }
+        var lp = leftIdx >= 0, rp = rightIdx >= 0;
+        leftHandStatus.className = "hand-indicator" + (lp ? " present" : "");
+        rightHandStatus.className = "hand-indicator" + (rp ? " present" : "");
+        for (var i = 0; i < 8; i++) {
+          var hi = i < 4 ? leftIdx : rightIdx;
+          if (hi < 0) { if (legendFills[i]) legendFills[i].style.width = "0%"; continue; }
+          var fn = ["index","middle","ring","pinky"][i % 4];
+          var dist = gesture.pinchDistanceForHand(hi, fn);
+          var fill = dist < 0.12 ? Math.round((1 - dist / 0.12) * 100) : 0;
+          if (legendFills[i]) legendFills[i].style.width = fill + "%";
+          if (legendRows[i]) legendRows[i].className = "legend-row" + (fill > 20 ? " active" : "");
+        }
+        if (lp && rp && data.isHandInZone) { gestureHint.textContent = "👌 双手已激活"; gestureHint.style.opacity = "0"; }
+        else if (lp || rp) { gestureHint.textContent = (lp ? "左手" : "右手") + "已检测，请放入另一只手"; gestureHint.style.opacity = "0.8"; }
+        else { gestureHint.textContent = "🖐️ 将双手放入摄像头画面"; gestureHint.style.opacity = "0.8"; }
+      });
+
+      btnStart.addEventListener("click", async function () {
+        screenStart.classList.add("hidden");
+        gestureHint.textContent = "⏳ 启动摄像头..."; gestureHint.style.opacity = "1";
+        try {
+          var stream = await navigator.mediaDevices.getUserMedia({ video:{width:320,height:240,facingMode:"user"}, audio:false });
+          videoEl.srcObject = stream;
+          videoEl.style.border = "3px solid #00ff88";
+          videoEl.style.display = "block";
+          videoEl.style.visibility = "visible";
+          videoEl.style.opacity = "1";
+          // video size now controlled by CSS absolute positioning
+          await videoEl.play();
+          gestureHint.textContent = "⏳ 加载手势模型...";
+          await gesture.init(videoEl, overlayCanvas, { maxNumHands:2 });
+          gestureHint.textContent = "✅ 模型就绪，启动游戏...";
+          if (window.Game && window.Game.start) {
+            window.Game.start({ canvas:gameCanvas, gesture:gesture, hud:{score:hudScore,lives:hudCombo,level:hudLevel,timer:hudTimer}, screens:{gameOver:screenGameOver,levelComplete:screenLevelComplete}, finalScoreEl:finalScoreEl, levelCompleteMsg:levelCompleteMsg, legendFills:legendFills, legendRows:legendRows });
+          }
+          gestureHint.style.opacity = "0";
+        } catch (err) {
+          console.error("Finger Pinch Symphony init error:", err);
+          var errModal = document.createElement("div");
+          errModal.className = "modal-overlay";
+          errModal.style.zIndex = "300";
+          errModal.innerHTML = '<div class="modal-title" style="color:#FF4466;font-size:28px;">启动失败</div>' +
+            '<div class="modal-subtitle" style="max-width:500px;">' + err.message + '<br><br>' +
+            '<span style="font-size:12px;color:#888;">请确保通过 <code style="color:#00FF88;">python serve.py</code> 启动本地服务器，<br>然后访问 <code style="color:#00FF88;">http://127.0.0.1:8765/</code></span></div>' +
+            '<button class="btn btn-primary" onclick="location.reload()">重试</button>';
+          document.body.appendChild(errModal);
+          gestureHint.textContent = "错误: " + err.message;
+          gestureHint.style.opacity = "1";
+          gestureHint.style.color = "red";
+          screenStart.classList.remove("hidden");
+        }
+      });
+
+      btnRetry.addEventListener("click", function () { screenGameOver.classList.add("hidden"); if (window.Game && window.Game.restart) window.Game.restart(); });
+      btnNext.addEventListener("click", function () { screenLevelComplete.classList.add("hidden"); if (window.Game && window.Game.nextLevel) window.Game.nextLevel(); });
+    })();
+  </script></body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

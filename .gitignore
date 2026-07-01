@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project temp
+_fix.py
+_fix_cn.py
+_original/
+
+# Dependencies (not needed for static game)
+node_modules/

@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MediaPipe Tasks-Vision v6</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0a0a0f; color: #e0e0e0; font-family: sans-serif; padding: 20px; }
+  h1 { font-size: 18px; margin-bottom: 12px; }
+  #status { padding: 10px 14px; border-radius: 6px; margin-bottom: 12px; font-size: 13px; white-space: pre-wrap; }
+  .ok { background: rgba(0,255,136,0.1); color: #00FF88; border: 1px solid #00FF88; }
+  .err { background: rgba(255,68,102,0.1); color: #FF4466; border: 1px solid #FF4466; }
+  button { padding: 10px 24px; border: none; border-radius: 6px; background: #00FF88; color: #0a0a0f; font-weight: 600; cursor: pointer; font-size: 14px; margin-bottom: 12px; }
+  canvas { display: block; width: 400px; max-width: 100%; border: 2px solid rgba(0,255,136,0.4); border-radius: 8px; margin-top: 8px; }
+  #diag { margin-top: 10px; font-size: 12px; color: #888; }
+</style>
+</head>
+<body>
+<h1>MediaPipe Tasks-Vision (ES Module)</h1>
+<div id="status" class="err">?????</div>
+<button id="btn">??</button>
+<canvas id="canvas"></canvas>
+<div id="diag">
+crossOriginIsolated: <b id="d-coi">?</b><br>
+SharedArrayBuffer: <b id="d-sab">?</b>
+</div>
+
+<script type="module">
+import { HandLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/vision_bundle.mjs";
+
+document.getElementById("d-coi").textContent = self.crossOriginIsolated ? "true ?" : "false ?";
+document.getElementById("d-sab").textContent = typeof SharedArrayBuffer !== "undefined" ? "available ?" : "MISSING ?";
+
+var statusEl = document.getElementById("status");
+var diagEl = document.getElementById("diag");
+var canvas = document.getElementById("canvas");
+var btn = document.getElementById("btn");
+var ctx = canvas.getContext("2d");
+var videoEl = document.createElement("video");
+videoEl.setAttribute("playsinline", "");
+var handLandmarker = null;
+var frameCount = 0;
+var lastVideoTime = -1;
+
+btn.addEventListener("click", async function () {
+  btn.disabled = true;
+  statusEl.className = "err";
+
+  function log(msg) { statusEl.textContent = msg; console.log(msg); }
+
+  try {
+    // Camera
+    log("1/4 ??????");
+    var stream = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240, facingMode: "user" }, audio: false });
+    videoEl.srcObject = stream;
+    document.body.appendChild(videoEl);
+    videoEl.style.cssText = "position:absolute;top:-9999px;left:0;width:320px;height:240px";
+    await videoEl.play();
+    var w = 0;
+    while (videoEl.videoWidth === 0 && w < 50) { await new Promise(r => setTimeout(r, 100)); w++; }
+    if (videoEl.videoWidth === 0) throw new Error("Video not ready");
+    canvas.width = videoEl.videoWidth;
+    canvas.height = videoEl.videoHeight;
+    log("2/4 Camera OK: " + canvas.width + "x" + canvas.height);
+
+    // WASM
+    log("3/4 Loading WASM files?");
+    var vision = await FilesetResolver.forVisionTasks(
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/wasm"
+    );
+
+    // Model
+    log("3/4 Loading hand model?");
+    handLandmarker = await HandLandmarker.createFromOptions(vision, {
+      baseOptions: {
+        modelAssetPath: "/models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task",
+        delegate: "CPU"
+      },
+      runningMode: "VIDEO",
+      numHands: 2
+    });
+
+    statusEl.className = "ok";
+    log("4/4 Running! Put hands in frame");
+
+    // Detection loop
+    (function detect() {
+      if (!handLandmarker || videoEl.videoWidth === 0) { requestAnimationFrame(detect); return; }
+      if (videoEl.currentTime !== lastVideoTime) {
+        lastVideoTime = videoEl.currentTime;
+        try {
+          var results = handLandmarker.detectForVideo(videoEl, performance.now());
+          frameCount++;
+          var hands = results.landmarks ? results.landmarks.length : 0;
+
+          ctx.save();
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          // Draw video AND skeleton in same flipped coordinate space
+          ctx.scale(-1, 1);
+          ctx.drawImage(videoEl, -canvas.width, 0, canvas.width, canvas.height);
+
+          if (results.landmarks) {
+            results.landmarks.forEach(function(lm, hi) {
+              var conns = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[0,17],[17,18],[18,19],[19,20]];
+              ctx.strokeStyle = "#00FF88"; ctx.lineWidth = 1;
+              conns.forEach(function(c) {
+                var a = lm[c[0]], b = lm[c[1]];
+                if (!a || !b) return;
+                ctx.beginPath(); ctx.moveTo((a.x-1)*canvas.width, a.y*canvas.height);
+                ctx.lineTo((b.x-1)*canvas.width, b.y*canvas.height); ctx.stroke();
+              });
+              lm.forEach(function(p, li) {
+                if (!p) return;
+                ctx.beginPath(); ctx.arc((p.x-1)*canvas.width, p.y*canvas.height, 2, 0, Math.PI*2);
+                ctx.fillStyle = (li===4||li===8||li===12||li===16||li===20) ? "#FF4466" : "#FFF";
+                ctx.fill();
+              });
+            });
+          }
+          ctx.restore();
+
+          // Draw text labels in normal (non-flipped) space
+          if (results.landmarks) {
+            results.landmarks.forEach(function(lm, hi) {
+              var hd = results.handedness && results.handedness[hi] ? results.handedness[hi][0].categoryName : "?";
+              ctx.fillStyle = "#FFF"; ctx.font = "11px sans-serif";
+              ctx.fillText(hd, (1-lm[0].x)*canvas.width, lm[0].y*canvas.height - 8);
+            });
+          }
+
+          diagEl.innerHTML =
+            "crossOriginIsolated: <b>" + (self.crossOriginIsolated ? "true ?" : "false ?") + "</b><br>" +
+            "SharedArrayBuffer: <b>" + (typeof SharedArrayBuffer !== "undefined" ? "avail ?" : "MISS ?") + "</b><br>" +
+            "Frames: <b>" + frameCount + "</b> | Hands: <b>" + hands + "</b>";
+        } catch(e) {
+          statusEl.className = "err";
+          statusEl.textContent = "DETECT ERROR: " + e.message;
+        }
+      }
+      requestAnimationFrame(detect);
+    })();
+
+  } catch (err) {
+    statusEl.className = "err";
+    statusEl.textContent = "ERROR: " + err.message;
+    btn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><title>GestureBase Test</title>
+<style>
+  body { background:#0a0a0f; color:#e0e0e0; font-family:sans-serif; padding:20px; }
+  .ok { color:#0F0; } .err { color:#F44; } .warn { color:#FF0; }
+  #status { font-size:14px; margin:10px 0; white-space:pre-wrap; }
+</style></head>
+<body>
+<h1>GestureBase _startDetection Test</h1>
+<div id="status">Loading...</div>
+<script src="gesture-base.js"></script>
+<script>
+(async function() {
+  var s = document.getElementById("status");
+  function log(msg) { s.innerHTML += msg + "\n"; console.log(msg); }
+
+  try {
+    log("Importing tasks-vision...");
+    var mod = await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/vision_bundle.mjs");
+    var HandLandmarker = mod.HandLandmarker;
+    var FilesetResolver = mod.FilesetResolver;
+    log('<span class="ok">tasks-vision imported</span>');
+
+    log("Camera...");
+    var video = document.createElement("video");
+    video.playsinline = true;
+    document.body.appendChild(video);
+    video.style.cssText = "position:absolute;top:-9999px;width:320px;height:240px";
+    var stream = await navigator.mediaDevices.getUserMedia({video:{width:320,height:240,facingMode:"user"},audio:false});
+    video.srcObject = stream;
+    await video.play();
+    var w = 0;
+    while(video.videoWidth===0 && w<50){await new Promise(r=>setTimeout(r,100));w++;}
+    log('<span class="ok">Camera: '+video.videoWidth+'x'+video.videoHeight+'</span>');
+
+    log("WASM...");
+    var vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/wasm");
+    log("Model...");
+    var hl = await HandLandmarker.createFromOptions(vision, {
+      baseOptions:{modelAssetPath:"/models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task",delegate:"GPU"},
+      runningMode:"VIDEO", numHands:2
+    });
+    log('<span class="ok">Model loaded</span>');
+
+    log("Calling gesture.init()...");
+    var g = new GestureBase({});
+    await g.init(video, null, hl);
+    log('<span class="ok">gesture.init() completed</span>');
+
+    // Poll every 500ms
+    function poll() {
+      var r = g._mpResultCount || 0;
+      var e = g._mpErrorCount || 0;
+      var h = g.allLandmarks ? g.allLandmarks.length : 0;
+      var hasHL = typeof g._handLandmarker !== "undefined";
+      s.innerHTML += "R:"+r+" E:"+e+" H:"+h+" HL:"+hasHL+"\n";
+      setTimeout(poll, 500);
+    }
+    setTimeout(poll, 500);
+
+  } catch(err) {
+    log('<span class="err">ERROR: '+err.message+'</span>');
+  }
+})();
+</script>
+</body></html>

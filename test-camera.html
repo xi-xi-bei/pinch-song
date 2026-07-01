@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Camera Test v3</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0a0a0f; color: #e0e0e0; font-family: sans-serif; padding: 20px; }
+  h1 { font-size: 20px; margin-bottom: 16px; }
+  #status { padding: 10px 14px; border-radius: 6px; margin-bottom: 16px; font-size: 13px; }
+  .ok { background: rgba(0,255,136,0.1); color: #00FF88; border: 1px solid #00FF88; }
+  .err { background: rgba(255,68,102,0.1); color: #FF4466; border: 1px solid #FF4466; }
+  .warn { background: rgba(255,200,0,0.1); color: #FFC800; border: 1px solid #FFC800; }
+  button { padding: 10px 24px; border: none; border-radius: 6px; background: #00FF88; color: #0a0a0f; font-weight: 600; cursor: pointer; font-size: 14px; }
+  canvas { display: block; width: 400px; max-width: 100%; border: 2px solid rgba(0,255,136,0.4); border-radius: 8px; margin-top: 12px; background: #111; }
+  #info { margin-top: 12px; font-size: 13px; color: #888; line-height: 1.6; }
+  #info span { color: #00FF88; }
+  #info .w { color: #FFC800; }
+</style>
+</head>
+<body>
+<h1>Canvas ????</h1>
+<div id="status" class="err">?????</div>
+<button id="btn">?????</button>
+<canvas id="canvas"></canvas>
+<div id="info"></div>
+
+<script>
+var statusEl = document.getElementById("status");
+var infoEl = document.getElementById("info");
+var canvas = document.getElementById("canvas");
+var btn = document.getElementById("btn");
+var ctx = canvas.getContext("2d", { willReadFrequently: true });
+var videoEl = document.createElement("video");
+videoEl.setAttribute("playsinline", "");
+var frameCount = 0;
+var pixelChecked = false;
+
+// Draw a test pattern to confirm canvas works
+ctx.fillStyle = "#FF0000";
+ctx.fillRect(0, 0, 200, 200);
+ctx.fillStyle = "#00FF00";
+ctx.fillRect(200, 0, 200, 200);
+
+btn.addEventListener("click", async function () {
+  btn.disabled = true;
+  statusEl.className = "err";
+  statusEl.textContent = "??????";
+  try {
+    var stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: "user" }, audio: false });
+    var track = stream.getVideoTracks()[0];
+    videoEl.srcObject = stream;
+    await videoEl.play();
+
+    var w = videoEl.videoWidth || 640;
+    var h = videoEl.videoHeight || 480;
+    canvas.width = w;
+    canvas.height = h;
+
+    statusEl.className = "ok";
+    statusEl.textContent = "? " + track.label + " (" + w + "x" + h + ")";
+
+    function draw() {
+      if (videoEl.paused || videoEl.ended) return;
+      ctx.save();
+      ctx.scale(-1, 1);
+      ctx.drawImage(videoEl, -w, 0, w, h);
+      ctx.restore();
+
+      // Draw red corner markers to prove canvas rendering
+      ctx.fillStyle = "#FF0000";
+      ctx.fillRect(0, 0, 30, 30);
+      ctx.fillRect(w - 30, 0, 30, 30);
+      ctx.fillRect(0, h - 30, 30, 30);
+      ctx.fillRect(w - 30, h - 30, 30, 30);
+
+      frameCount++;
+
+      // Every 30 frames, sample the center pixel
+      var pixelInfo = "";
+      if (frameCount % 30 === 0) {
+        try {
+          var cx = Math.floor(w / 2);
+          var cy = Math.floor(h / 2);
+          var px = ctx.getImageData(cx - 10, cy - 10, 20, 20);
+          var sum = 0;
+          for (var i = 0; i < px.data.length; i += 4) {
+            sum += px.data[i] + px.data[i+1] + px.data[i+2];
+          }
+          var avg = Math.round(sum / (px.data.length / 4 * 3));
+          pixelInfo = " | ????: <span class='" + (avg < 10 ? "w" : "") + "'>" + avg + "/255 " + (avg < 10 ? "(??!)" : "(???)") + "</span>";
+          if (avg >= 10 && !pixelChecked) {
+            pixelChecked = true;
+            statusEl.className = "ok";
+            statusEl.textContent += " ? ????!";
+          }
+        } catch(e) {
+          pixelInfo = " | ??????: " + e.message;
+        }
+      }
+
+      infoEl.innerHTML = "??: <span>" + frameCount + "</span>" + pixelInfo + "<br>????????? ? ?????";
+      requestAnimationFrame(draw);
+    }
+    requestAnimationFrame(draw);
+  } catch (err) {
+    statusEl.className = "err";
+    statusEl.textContent = "??: " + err.message;
+    btn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>

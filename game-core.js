@@ -80,9 +80,9 @@
     }
   }
 
-  function playNote(laneIndex) {
+  async function playNote(laneIndex) {
     if (!audioCtx) return;
-    if (audioCtx.state === 'suspended') audioCtx.resume();
+    if (audioCtx.state === 'suspended') await audioCtx.resume();
 
     // Stop existing oscillator for this lane
     if (oscillators[laneIndex]) {
